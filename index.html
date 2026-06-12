@@ -2251,21 +2251,6 @@
   .u3d-on .contact-item:hover .zone-icon { transform: translateY(-2px) translateZ(34px); }
   .u3d-on .partner-badge .partner-logo { transform: translateZ(26px); }
 
-  /* CTA: magnetic pull (JS) + light sweep */
-  .u3d-on .btn-primary, .u3d-on .btn-ghost {
-    transition-property: transform, background, box-shadow, border-color, color;
-  }
-  .u3d-on .btn-primary { position: relative; overflow: hidden; }
-  .u3d-on .btn-primary::after {
-    content: '';
-    position: absolute; top: -20%; bottom: -20%; left: -70%; width: 46%;
-    background: linear-gradient(105deg, transparent, rgba(255,255,255,0.38), transparent);
-    transform: skewX(-18deg);
-    transition: left 0.65s var(--uupm-ease);
-    pointer-events: none;
-  }
-  .u3d-on .btn-primary:hover::after { left: 130%; }
-
   /* hero becomes a 3D stage */
   .u3d-on .hero { perspective: 1400px; }
   .u3d-on .hero-title .accent { animation: u3dGlow 4.5s ease-in-out infinite; }
@@ -2308,12 +2293,25 @@
         cv.width = W * dpr; cv.height = H * dpr;
         cv.style.width = W + 'px'; cv.style.height = H + 'px';
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        var n = Math.max(30, Math.min(110, Math.round(W * H / 16000)));
-        pts = [];
-        for (var i = 0; i < n; i++) {
-          pts.push({ x: Math.random() * W, y: Math.random() * H,
-                     vx: (Math.random() - 0.5) * 0.35, vy: (Math.random() - 0.5) * 0.35 });
+        var SHAPES = ['gear', 'hex', 'tri', 'square', 'cross', 'dot', 'dot', 'dot'];
+        function makePt(big) {
+          return {
+            t: big ? (Math.random() < 0.6 ? 'gear' : 'hex')
+                   : SHAPES[(Math.random() * SHAPES.length) | 0],
+            x: Math.random() * W, y: Math.random() * H,
+            vx: (Math.random() - 0.5) * (big ? 0.1 : 0.28),
+            vy: (Math.random() - 0.5) * (big ? 0.1 : 0.28),
+            r: big ? 26 + Math.random() * 24 : 3.5 + Math.random() * 5.5,
+            a: Math.random() * Math.PI * 2,
+            va: (Math.random() - 0.5) * (big ? 0.005 : 0.014),
+            big: big
+          };
         }
+        var n = Math.max(22, Math.min(64, Math.round(W * H / 24000)));
+        var nBig = W > 700 ? 4 : 2;
+        pts = [];
+        for (var i = 0; i < n; i++) pts.push(makePt(false));
+        for (i = 0; i < nBig; i++) pts.push(makePt(true));
       }
       resize();
       addEventListener('resize', resize, { passive: true });
@@ -2324,7 +2322,61 @@
       }, { passive: true });
       hero.addEventListener('pointerleave', function () { mx = -1e4; my = -1e4; });
 
-      var LINK = 120 * 120;
+      var LINK = 130 * 130;
+      function drawShape(p, alpha) {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.a);
+        ctx.strokeStyle = 'rgba(120,178,255,' + alpha + ')';
+        ctx.lineWidth = 1;
+        var r = p.r, i, ang, fx, fy;
+        switch (p.t) {
+          case 'gear':
+            ctx.beginPath();
+            for (i = 0; i < 8; i++) {
+              ang = i * Math.PI / 4;
+              ctx.moveTo(Math.cos(ang) * r * 0.62, Math.sin(ang) * r * 0.62);
+              ctx.lineTo(Math.cos(ang) * r, Math.sin(ang) * r);
+            }
+            ctx.stroke();
+            ctx.beginPath(); ctx.arc(0, 0, r * 0.62, 0, 6.2832); ctx.stroke();
+            ctx.beginPath(); ctx.arc(0, 0, r * 0.24, 0, 6.2832); ctx.stroke();
+            break;
+          case 'hex': /* a nut: hexagon with a bore circle */
+            ctx.beginPath();
+            for (i = 0; i < 6; i++) {
+              ang = i * Math.PI / 3;
+              fx = Math.cos(ang) * r; fy = Math.sin(ang) * r;
+              i ? ctx.lineTo(fx, fy) : ctx.moveTo(fx, fy);
+            }
+            ctx.closePath(); ctx.stroke();
+            ctx.beginPath(); ctx.arc(0, 0, r * 0.45, 0, 6.2832); ctx.stroke();
+            break;
+          case 'tri':
+            ctx.beginPath();
+            for (i = 0; i < 3; i++) {
+              ang = i * 2.0944 - 1.5708;
+              fx = Math.cos(ang) * r; fy = Math.sin(ang) * r;
+              i ? ctx.lineTo(fx, fy) : ctx.moveTo(fx, fy);
+            }
+            ctx.closePath(); ctx.stroke();
+            break;
+          case 'square':
+            ctx.strokeRect(-r * 0.8, -r * 0.8, r * 1.6, r * 1.6);
+            break;
+          case 'cross': /* blueprint reference mark: circle + crosshair */
+            ctx.beginPath(); ctx.arc(0, 0, r * 0.7, 0, 6.2832); ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(-r, 0); ctx.lineTo(r, 0);
+            ctx.moveTo(0, -r); ctx.lineTo(0, r);
+            ctx.stroke();
+            break;
+          default: /* rivet dot */
+            ctx.fillStyle = 'rgba(140,190,255,' + alpha + ')';
+            ctx.fillRect(-1.2, -1.2, 2.5, 2.5);
+        }
+        ctx.restore();
+      }
       function step() {
         raf = null;
         ctx.clearRect(0, 0, W, H);
@@ -2332,24 +2384,37 @@
         for (i = 0; i < pts.length; i++) {
           p = pts[i];
           p.x += p.vx; p.y += p.vy;
-          if (p.x < -10) p.x = W + 10; else if (p.x > W + 10) p.x = -10;
-          if (p.y < -10) p.y = H + 10; else if (p.y > H + 10) p.y = -10;
-          var dx = mx - p.x, dy = my - p.y;
-          if (dx * dx + dy * dy < 26000) { p.x += dx * 0.002; p.y += dy * 0.002; }
+          p.a += p.va;
+          var m = p.r + 12;
+          if (p.x < -m) p.x = W + m; else if (p.x > W + m) p.x = -m;
+          if (p.y < -m) p.y = H + m; else if (p.y > H + m) p.y = -m;
+          if (!p.big) {
+            var dx = mx - p.x, dy = my - p.y;
+            if (dx * dx + dy * dy < 26000) { p.x += dx * 0.002; p.y += dy * 0.002; }
+          }
         }
+        /* large blueprint figures: very faint, behind everything */
+        for (i = 0; i < pts.length; i++) {
+          if (pts[i].big) drawShape(pts[i], '0.10');
+        }
+        /* connecting lines between small figures */
         ctx.lineWidth = 1;
         for (i = 0; i < pts.length; i++) {
           a = pts[i];
+          if (a.big) continue;
           for (j = i + 1; j < pts.length; j++) {
             b = pts[j];
+            if (b.big) continue;
             var ddx = a.x - b.x, ddy = a.y - b.y, dd = ddx * ddx + ddy * ddy;
             if (dd < LINK) {
-              ctx.strokeStyle = 'rgba(96,165,250,' + (0.15 * (1 - dd / LINK)).toFixed(3) + ')';
+              ctx.strokeStyle = 'rgba(96,165,250,' + (0.13 * (1 - dd / LINK)).toFixed(3) + ')';
               ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
             }
           }
-          ctx.fillStyle = 'rgba(140,190,255,0.55)';
-          ctx.fillRect(a.x - 1, a.y - 1, 2, 2);
+        }
+        /* small engineering figures on top */
+        for (i = 0; i < pts.length; i++) {
+          if (!pts[i].big) drawShape(pts[i], '0.5');
         }
         if (visible && !document.hidden) raf = requestAnimationFrame(step);
       }
@@ -2405,18 +2470,7 @@
       card.addEventListener('pointerleave', function () { over = false; trx = 0; try_ = 0; });
     });
 
-    /* ---------- 3. Magnetic CTA buttons ---------- */
-    document.querySelectorAll('.btn-primary, .btn-ghost').forEach(function (btn) {
-      btn.addEventListener('pointermove', function (e) {
-        var r = btn.getBoundingClientRect();
-        var dx = (e.clientX - r.left - r.width / 2) / r.width;
-        var dy = (e.clientY - r.top - r.height / 2) / r.height;
-        btn.style.transform = 'translate(' + (dx * 10).toFixed(1) + 'px,' + (dy * 8 - 2).toFixed(1) + 'px)';
-      });
-      btn.addEventListener('pointerleave', function () { btn.style.transform = ''; });
-    });
-
-    /* ---------- 4. Hero depth parallax (robot stage + copy) ---------- */
+    /* ---------- 3. Hero depth parallax (robot stage + copy) ---------- */
     var stage = document.getElementById('revealStage');
     var hc = document.querySelector('.hero-content');
     var wide = matchMedia('(min-width: 901px)');
