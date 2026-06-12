@@ -1325,7 +1325,7 @@
     animation: uupmReveal 0.7s var(--uupm-ease) backwards;
   }
   @keyframes uupmReveal {
-    from { opacity: 0; transform: translateY(34px) rotateX(8deg); }
+    from { opacity: 0; transform: perspective(1100px) translateY(44px) rotateX(16deg) scale(0.97); }
     to   { opacity: 1; transform: none; }
   }
 
@@ -2218,6 +2218,232 @@
         });
       }, { threshold: 0.5 });
       statNums.forEach(function (el) { co.observe(el); });
+    }
+  })();
+</script>
+
+<style>
+  /* ============================================================= */
+  /*  3D MOTION LAYER (ui-ux-pro-max) — additive, gated by .u3d-on */
+  /* ============================================================= */
+
+  /* particle network canvas inside the hero */
+  .u3d-net { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+
+  /* cursor-following glare sheen on tilted cards */
+  .u3d-glare {
+    position: absolute; inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 4;
+    background: radial-gradient(460px circle at var(--gx, 50%) var(--gy, 50%),
+      rgba(140,190,255,0.16), rgba(140,190,255,0.05) 42%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.35s var(--uupm-ease);
+  }
+  .u3d-tilt { will-change: transform; position: relative; }
+  .u3d-tilt:hover .u3d-glare { opacity: 1; }
+
+  /* real depth: icons float above the card plane (cards without overflow:hidden) */
+  .u3d-on .teacher-card, .u3d-on .contact-item, .u3d-on .partner-badge { transform-style: preserve-3d; }
+  .u3d-on .teacher-card .zone-icon, .u3d-on .contact-item .zone-icon { transform: translateZ(34px); }
+  .u3d-on .teacher-card:hover .zone-icon,
+  .u3d-on .contact-item:hover .zone-icon { transform: translateY(-2px) translateZ(34px); }
+  .u3d-on .partner-badge .partner-logo { transform: translateZ(26px); }
+
+  /* CTA: magnetic pull (JS) + light sweep */
+  .u3d-on .btn-primary, .u3d-on .btn-ghost {
+    transition-property: transform, background, box-shadow, border-color, color;
+  }
+  .u3d-on .btn-primary { position: relative; overflow: hidden; }
+  .u3d-on .btn-primary::after {
+    content: '';
+    position: absolute; top: -20%; bottom: -20%; left: -70%; width: 46%;
+    background: linear-gradient(105deg, transparent, rgba(255,255,255,0.38), transparent);
+    transform: skewX(-18deg);
+    transition: left 0.65s var(--uupm-ease);
+    pointer-events: none;
+  }
+  .u3d-on .btn-primary:hover::after { left: 130%; }
+
+  /* hero becomes a 3D stage */
+  .u3d-on .hero { perspective: 1400px; }
+  .u3d-on .hero-title .accent { animation: u3dGlow 4.5s ease-in-out infinite; }
+  @keyframes u3dGlow {
+    0%, 100% { text-shadow: 0 0 22px rgba(59,130,246,0.25); }
+    50%      { text-shadow: 0 0 56px rgba(59,130,246,0.65), 0 0 120px rgba(59,130,246,0.25); }
+  }
+
+  /* the giant watermark year slowly drifts in space */
+  .u3d-on .building-year {
+    animation: bldYear 5s ease-in-out infinite, u3dDrift 9s ease-in-out infinite;
+  }
+  @keyframes u3dDrift {
+    0%, 100% { transform: translateY(-50%); }
+    50%      { transform: translateY(calc(-50% - 14px)); }
+  }
+</style>
+
+<script>
+  /* ============ 3D MOTION LAYER (ui-ux-pro-max) ============ */
+  (function () {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var fine = matchMedia('(hover: hover) and (pointer: fine)').matches;
+    document.documentElement.classList.add('u3d-on');
+
+    /* ---------- 1. Blueprint particle network in the hero ---------- */
+    var hero = document.querySelector('.hero');
+    if (hero) {
+      var cv = document.createElement('canvas');
+      cv.className = 'u3d-net';
+      cv.setAttribute('aria-hidden', 'true');
+      var heroContent = hero.querySelector('.hero-content');
+      hero.insertBefore(cv, heroContent);
+      var ctx = cv.getContext('2d');
+      var W = 0, H = 0, pts = [], mx = -1e4, my = -1e4, visible = true, raf = null;
+
+      function resize() {
+        var dpr = Math.min(devicePixelRatio || 1, 2);
+        W = hero.clientWidth; H = hero.clientHeight;
+        cv.width = W * dpr; cv.height = H * dpr;
+        cv.style.width = W + 'px'; cv.style.height = H + 'px';
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        var n = Math.max(30, Math.min(110, Math.round(W * H / 16000)));
+        pts = [];
+        for (var i = 0; i < n; i++) {
+          pts.push({ x: Math.random() * W, y: Math.random() * H,
+                     vx: (Math.random() - 0.5) * 0.35, vy: (Math.random() - 0.5) * 0.35 });
+        }
+      }
+      resize();
+      addEventListener('resize', resize, { passive: true });
+
+      hero.addEventListener('pointermove', function (e) {
+        var r = cv.getBoundingClientRect();
+        mx = e.clientX - r.left; my = e.clientY - r.top;
+      }, { passive: true });
+      hero.addEventListener('pointerleave', function () { mx = -1e4; my = -1e4; });
+
+      var LINK = 120 * 120;
+      function step() {
+        raf = null;
+        ctx.clearRect(0, 0, W, H);
+        var i, j, p, a, b;
+        for (i = 0; i < pts.length; i++) {
+          p = pts[i];
+          p.x += p.vx; p.y += p.vy;
+          if (p.x < -10) p.x = W + 10; else if (p.x > W + 10) p.x = -10;
+          if (p.y < -10) p.y = H + 10; else if (p.y > H + 10) p.y = -10;
+          var dx = mx - p.x, dy = my - p.y;
+          if (dx * dx + dy * dy < 26000) { p.x += dx * 0.002; p.y += dy * 0.002; }
+        }
+        ctx.lineWidth = 1;
+        for (i = 0; i < pts.length; i++) {
+          a = pts[i];
+          for (j = i + 1; j < pts.length; j++) {
+            b = pts[j];
+            var ddx = a.x - b.x, ddy = a.y - b.y, dd = ddx * ddx + ddy * ddy;
+            if (dd < LINK) {
+              ctx.strokeStyle = 'rgba(96,165,250,' + (0.15 * (1 - dd / LINK)).toFixed(3) + ')';
+              ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+            }
+          }
+          ctx.fillStyle = 'rgba(140,190,255,0.55)';
+          ctx.fillRect(a.x - 1, a.y - 1, 2, 2);
+        }
+        if (visible && !document.hidden) raf = requestAnimationFrame(step);
+      }
+      function kick() { if (!raf && visible && !document.hidden) raf = requestAnimationFrame(step); }
+
+      if ('IntersectionObserver' in window) {
+        new IntersectionObserver(function (en) {
+          visible = en[0].isIntersecting; kick();
+        }, { threshold: 0 }).observe(hero);
+      }
+      document.addEventListener('visibilitychange', kick);
+      kick();
+    }
+
+    if (!fine) return; /* tilt / magnetic / parallax need a real mouse */
+
+    /* ---------- 2. Cursor tilt + glare on every card ---------- */
+    var cards = document.querySelectorAll(
+      '.message-card, .profile-card, .admission-card, .news-card, ' +
+      '.teacher-card, .contact-item, .partner-badge');
+    cards.forEach(function (card) {
+      card.classList.add('u3d-tilt');
+      var glare = document.createElement('div');
+      glare.className = 'u3d-glare';
+      card.appendChild(glare);
+
+      var rx = 0, ry = 0, trx = 0, try_ = 0, running = false, over = false;
+      function loop() {
+        rx += (trx - rx) * 0.18;
+        ry += (try_ - ry) * 0.18;
+        if (!over && Math.abs(rx) < 0.03 && Math.abs(ry) < 0.03) {
+          card.style.transform = '';
+          running = false;
+          return;
+        }
+        card.style.transform = 'perspective(950px) rotateX(' + rx.toFixed(2) +
+                               'deg) rotateY(' + ry.toFixed(2) + 'deg) translateY(-3px)';
+        requestAnimationFrame(loop);
+      }
+      card.addEventListener('pointerenter', function () {
+        over = true;
+        if (!running) { running = true; requestAnimationFrame(loop); }
+      });
+      card.addEventListener('pointermove', function (e) {
+        var r = card.getBoundingClientRect();
+        var px = (e.clientX - r.left) / r.width;
+        var py = (e.clientY - r.top) / r.height;
+        try_ = (px - 0.5) * 9;
+        trx = (0.5 - py) * 9;
+        card.style.setProperty('--gx', (px * 100).toFixed(1) + '%');
+        card.style.setProperty('--gy', (py * 100).toFixed(1) + '%');
+      });
+      card.addEventListener('pointerleave', function () { over = false; trx = 0; try_ = 0; });
+    });
+
+    /* ---------- 3. Magnetic CTA buttons ---------- */
+    document.querySelectorAll('.btn-primary, .btn-ghost').forEach(function (btn) {
+      btn.addEventListener('pointermove', function (e) {
+        var r = btn.getBoundingClientRect();
+        var dx = (e.clientX - r.left - r.width / 2) / r.width;
+        var dy = (e.clientY - r.top - r.height / 2) / r.height;
+        btn.style.transform = 'translate(' + (dx * 10).toFixed(1) + 'px,' + (dy * 8 - 2).toFixed(1) + 'px)';
+      });
+      btn.addEventListener('pointerleave', function () { btn.style.transform = ''; });
+    });
+
+    /* ---------- 4. Hero depth parallax (robot stage + copy) ---------- */
+    var stage = document.getElementById('revealStage');
+    var hc = document.querySelector('.hero-content');
+    var wide = matchMedia('(min-width: 901px)');
+    if (hero && (stage || hc)) {
+      var hx = 0, hy = 0, thx = 0, thy = 0, hraf = null;
+      function hLoop() {
+        hraf = null;
+        hx += (thx - hx) * 0.06;
+        hy += (thy - hy) * 0.06;
+        if (wide.matches) {
+          if (stage) stage.style.transform = 'translateY(-50%) rotateY(' + (hx * 3.2).toFixed(2) +
+                                             'deg) rotateX(' + (-hy * 2.2).toFixed(2) + 'deg)';
+          if (hc) hc.style.transform = 'translate3d(' + (hx * -8).toFixed(1) + 'px,' + (hy * -5).toFixed(1) + 'px,0)';
+        } else {
+          if (stage) stage.style.transform = '';
+          if (hc) hc.style.transform = '';
+        }
+        if (Math.abs(thx - hx) > 0.002 || Math.abs(thy - hy) > 0.002) hraf = requestAnimationFrame(hLoop);
+      }
+      function hKick() { if (!hraf) hraf = requestAnimationFrame(hLoop); }
+      hero.addEventListener('pointermove', function (e) {
+        thx = (e.clientX / innerWidth - 0.5) * 2;
+        thy = (e.clientY / innerHeight - 0.5) * 2;
+        hKick();
+      }, { passive: true });
+      hero.addEventListener('pointerleave', function () { thx = 0; thy = 0; hKick(); });
+      wide.addEventListener('change', hKick);
     }
   })();
 </script>
