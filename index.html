@@ -2229,51 +2229,12 @@
 
   /* particle network canvas inside the hero */
   .u3d-net { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
-
-  /* cursor-following glare sheen on tilted cards */
-  .u3d-glare {
-    position: absolute; inset: 0;
-    border-radius: inherit;
-    pointer-events: none;
-    z-index: 4;
-    background: radial-gradient(460px circle at var(--gx, 50%) var(--gy, 50%),
-      rgba(140,190,255,0.16), rgba(140,190,255,0.05) 42%, transparent 70%);
-    opacity: 0;
-    transition: opacity 0.35s var(--uupm-ease);
-  }
-  .u3d-tilt { will-change: transform; position: relative; }
-  .u3d-tilt:hover .u3d-glare { opacity: 1; }
-
-  /* real depth: icons float above the card plane (cards without overflow:hidden) */
-  .u3d-on .teacher-card, .u3d-on .contact-item, .u3d-on .partner-badge { transform-style: preserve-3d; }
-  .u3d-on .teacher-card .zone-icon, .u3d-on .contact-item .zone-icon { transform: translateZ(34px); }
-  .u3d-on .teacher-card:hover .zone-icon,
-  .u3d-on .contact-item:hover .zone-icon { transform: translateY(-2px) translateZ(34px); }
-  .u3d-on .partner-badge .partner-logo { transform: translateZ(26px); }
-
-  /* hero becomes a 3D stage */
-  .u3d-on .hero { perspective: 1400px; }
-  .u3d-on .hero-title .accent { animation: u3dGlow 4.5s ease-in-out infinite; }
-  @keyframes u3dGlow {
-    0%, 100% { text-shadow: 0 0 22px rgba(59,130,246,0.25); }
-    50%      { text-shadow: 0 0 56px rgba(59,130,246,0.65), 0 0 120px rgba(59,130,246,0.25); }
-  }
-
-  /* the giant watermark year slowly drifts in space */
-  .u3d-on .building-year {
-    animation: bldYear 5s ease-in-out infinite, u3dDrift 9s ease-in-out infinite;
-  }
-  @keyframes u3dDrift {
-    0%, 100% { transform: translateY(-50%); }
-    50%      { transform: translateY(calc(-50% - 14px)); }
-  }
 </style>
 
 <script>
   /* ============ 3D MOTION LAYER (ui-ux-pro-max) ============ */
   (function () {
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    var fine = matchMedia('(hover: hover) and (pointer: fine)').matches;
     document.documentElement.classList.add('u3d-on');
 
     /* ---------- 1. Blueprint particle network in the hero ---------- */
@@ -2429,76 +2390,6 @@
       kick();
     }
 
-    if (!fine) return; /* tilt / magnetic / parallax need a real mouse */
-
-    /* ---------- 2. Cursor tilt + glare on every card ---------- */
-    var cards = document.querySelectorAll(
-      '.message-card, .profile-card, .admission-card, .news-card, ' +
-      '.teacher-card, .contact-item, .partner-badge');
-    cards.forEach(function (card) {
-      card.classList.add('u3d-tilt');
-      var glare = document.createElement('div');
-      glare.className = 'u3d-glare';
-      card.appendChild(glare);
-
-      var rx = 0, ry = 0, trx = 0, try_ = 0, running = false, over = false;
-      function loop() {
-        rx += (trx - rx) * 0.18;
-        ry += (try_ - ry) * 0.18;
-        if (!over && Math.abs(rx) < 0.03 && Math.abs(ry) < 0.03) {
-          card.style.transform = '';
-          running = false;
-          return;
-        }
-        card.style.transform = 'perspective(950px) rotateX(' + rx.toFixed(2) +
-                               'deg) rotateY(' + ry.toFixed(2) + 'deg) translateY(-3px)';
-        requestAnimationFrame(loop);
-      }
-      card.addEventListener('pointerenter', function () {
-        over = true;
-        if (!running) { running = true; requestAnimationFrame(loop); }
-      });
-      card.addEventListener('pointermove', function (e) {
-        var r = card.getBoundingClientRect();
-        var px = (e.clientX - r.left) / r.width;
-        var py = (e.clientY - r.top) / r.height;
-        try_ = (px - 0.5) * 9;
-        trx = (0.5 - py) * 9;
-        card.style.setProperty('--gx', (px * 100).toFixed(1) + '%');
-        card.style.setProperty('--gy', (py * 100).toFixed(1) + '%');
-      });
-      card.addEventListener('pointerleave', function () { over = false; trx = 0; try_ = 0; });
-    });
-
-    /* ---------- 3. Hero depth parallax (robot stage + copy) ---------- */
-    var stage = document.getElementById('revealStage');
-    var hc = document.querySelector('.hero-content');
-    var wide = matchMedia('(min-width: 901px)');
-    if (hero && (stage || hc)) {
-      var hx = 0, hy = 0, thx = 0, thy = 0, hraf = null;
-      function hLoop() {
-        hraf = null;
-        hx += (thx - hx) * 0.06;
-        hy += (thy - hy) * 0.06;
-        if (wide.matches) {
-          if (stage) stage.style.transform = 'translateY(-50%) rotateY(' + (hx * 3.2).toFixed(2) +
-                                             'deg) rotateX(' + (-hy * 2.2).toFixed(2) + 'deg)';
-          if (hc) hc.style.transform = 'translate3d(' + (hx * -8).toFixed(1) + 'px,' + (hy * -5).toFixed(1) + 'px,0)';
-        } else {
-          if (stage) stage.style.transform = '';
-          if (hc) hc.style.transform = '';
-        }
-        if (Math.abs(thx - hx) > 0.002 || Math.abs(thy - hy) > 0.002) hraf = requestAnimationFrame(hLoop);
-      }
-      function hKick() { if (!hraf) hraf = requestAnimationFrame(hLoop); }
-      hero.addEventListener('pointermove', function (e) {
-        thx = (e.clientX / innerWidth - 0.5) * 2;
-        thy = (e.clientY / innerHeight - 0.5) * 2;
-        hKick();
-      }, { passive: true });
-      hero.addEventListener('pointerleave', function () { thx = 0; thy = 0; hKick(); });
-      wide.addEventListener('change', hKick);
-    }
   })();
 </script>
 
